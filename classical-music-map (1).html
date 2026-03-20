@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Sound of History — Classical Music Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:         #161210;
+  --parchment:  #e8dcc8;
+  --gold:       #c8943a;
+  --gold-light: #e8b86d;
+  --gold-dim:   #7a5820;
+  --muted:      #8a7a65;
+  --land:       #3a5244;
+  --land-hi:    #4a6a58;
+  --land-act:   #78c49a;
+  --sea:        #141c22;
+  --border-col: rgba(6,12,8,0.85);
+  --surface:    #1e1812;
+  --surface2:   #2a2016;
+  --minor-pin:  #8a6030;
+  --minor-glow: rgba(138,96,48,0.35);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:100%; height:100%; background:var(--bg); color:var(--parchment); font-family:'EB Garamond',serif; overflow:hidden; user-select:none; }
+#app { display:flex; flex-direction:column; height:100vh; width:100vw; }
+
+/* Header */
+#header { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0.6rem 1.4rem 0.45rem; border-bottom:0.5px solid rgba(200,148,58,0.18); gap:1rem; }
+.header-left h1 { font-family:'Playfair Display',serif; font-size:clamp(1rem,2.2vw,1.6rem); font-weight:400; color:var(--gold-light); line-height:1; }
+.header-left h1 em { font-style:italic; color:var(--parchment); }
+.header-left .sub { font-size:0.62rem; color:var(--muted); letter-spacing:0.1em; margin-top:3px; }
+
+#header-right { display:flex; align-items:center; gap:1rem; flex-shrink:0; }
+
+#era-badge { font-family:'Playfair Display',serif; font-size:0.76rem; font-style:italic; color:var(--gold); background:rgba(200,148,58,0.09); border:0.5px solid rgba(200,148,58,0.28); padding:4px 16px; border-radius:2px; transition:all 0.4s; white-space:nowrap; }
+
+/* Legend */
+#legend { display:flex; align-items:center; gap:10px; }
+.legend-item { display:flex; align-items:center; gap:5px; font-size:0.6rem; color:var(--muted); letter-spacing:0.06em; }
+.legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.legend-dot.major { background:var(--gold); box-shadow:0 0 5px rgba(200,148,58,0.5); }
+.legend-dot.minor { background:var(--minor-pin); }
+
+#composer-card { max-width:200px; text-align:right; opacity:0; transition:opacity 0.3s; flex-shrink:0; }
+#composer-card.visible { opacity:1; }
+.c-name { font-family:'Playfair Display',serif; font-size:clamp(0.74rem,1.3vw,0.95rem); color:var(--gold-light); }
+.c-meta { font-size:0.58rem; color:var(--muted); letter-spacing:0.06em; margin-top:2px; }
+
+/* Map */
+#map-wrap { flex:1; position:relative; overflow:hidden; background:var(--sea); }
+#map-svg { width:100%; height:100%; }
+.country { fill:var(--land); stroke:var(--border-col); stroke-width:0.6px; transition:fill 0.3s ease; cursor:default; }
+.country.has-composer { fill:var(--land-hi); cursor:pointer; }
+.country.active-composer { fill:var(--land-act); }
+.country.out-of-region { fill:#242c28; }
+
+/* Major pins */
+.pin-major { cursor:pointer; }
+.pin-pulse { fill:none; stroke:var(--gold-light); stroke-width:1; opacity:0; animation:pulse 2.4s ease-out infinite; }
+@keyframes pulse { 0%{r:5;opacity:0.7} 100%{r:16;opacity:0} }
+.pin-dot-major { fill:var(--gold); stroke:rgba(12,8,4,0.9); stroke-width:1.5; transition:r 0.15s,fill 0.15s; filter:drop-shadow(0 0 5px rgba(200,148,58,0.55)); }
+.pin-major:hover .pin-dot-major { fill:var(--gold-light); }
+.pin-label-major { font-family:'EB Garamond',serif; font-size:11px; fill:var(--gold-light); pointer-events:none; opacity:0; transition:opacity 0.12s; paint-order:stroke; stroke:rgba(10,6,2,0.95); stroke-width:3px; stroke-linejoin:round; }
+.pin-major:hover .pin-label-major { opacity:1; }
+
+/* Minor pins */
+.pin-minor { cursor:pointer; }
+.pin-dot-minor { fill:var(--minor-pin); stroke:rgba(12,8,4,0.8); stroke-width:1; transition:r 0.12s,fill 0.12s; }
+.pin-minor:hover .pin-dot-minor { fill:#b07840; r:5; }
+.pin-label-minor { font-family:'EB Garamond',serif; font-size:10px; fill:#b07840; pointer-events:none; opacity:0; transition:opacity 0.1s; paint-order:stroke; stroke:rgba(10,6,2,0.95); stroke-width:3px; stroke-linejoin:round; }
+.pin-minor:hover .pin-label-minor { opacity:1; }
+
+/* Timeline */
+#timeline-wrap { flex-shrink:0; padding:0.5rem 1.8rem 0.85rem; background:linear-gradient(to top,rgba(22,18,16,1),rgba(22,18,16,0.92)); border-top:0.5px solid rgba(200,148,58,0.13); }
+#era-markers { display:flex; justify-content:space-between; margin-bottom:4px; padding:0 4px; }
+.era-marker { font-size:0.52rem; font-style:italic; color:var(--gold-dim); letter-spacing:0.05em; font-family:'EB Garamond',serif; }
+#scrubber-track { position:relative; height:34px; cursor:pointer; display:flex; align-items:center; }
+#track-bg { position:absolute; left:0; right:0; height:2px; background:rgba(200,148,58,0.12); border-radius:1px; }
+#track-eras { position:absolute; left:0; right:0; height:2px; border-radius:1px; overflow:hidden; display:flex; }
+.era-seg { height:100%; opacity:0.4; }
+#track-fill { position:absolute; left:0; height:2px; background:linear-gradient(to right,var(--gold-dim),var(--gold)); border-radius:1px; pointer-events:none; z-index:2; }
+#scrubber-handle { position:absolute; width:22px; height:22px; background:radial-gradient(circle at 35% 35%,var(--gold-light),var(--gold)); border-radius:50%; border:2px solid var(--bg); box-shadow:0 0 0 1px var(--gold-dim),0 2px 10px rgba(0,0,0,0.7); cursor:grab; transform:translateX(-50%); z-index:10; top:50%; margin-top:-11px; transition:box-shadow 0.15s; }
+#scrubber-handle:hover, #scrubber-handle.dragging { box-shadow:0 0 0 2px var(--gold-light),0 0 18px rgba(200,148,58,0.55),0 2px 10px rgba(0,0,0,0.7); cursor:grabbing; }
+#year-tooltip { position:absolute; bottom:calc(100% + 10px); left:50%; transform:translateX(-50%); background:var(--surface2); border:0.5px solid rgba(200,148,58,0.4); color:var(--gold-light); font-family:'Playfair Display',serif; font-size:1.05rem; font-weight:600; padding:3px 12px 2px; border-radius:3px; white-space:nowrap; pointer-events:none; letter-spacing:0.04em; }
+#year-tooltip::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:rgba(200,148,58,0.4); }
+
+/* Major Modal */
+#modal-backdrop { display:none; position:fixed; inset:0; background:rgba(8,6,4,0.84); align-items:center; justify-content:center; z-index:300; padding:1rem; backdrop-filter:blur(5px); }
+#modal-backdrop.open { display:flex; }
+#modal { background:var(--surface); border:0.5px solid rgba(200,148,58,0.28); border-radius:6px; width:100%; max-width:560px; overflow:hidden; animation:modalIn 0.22s cubic-bezier(0.22,1,0.36,1); box-shadow:0 40px 100px rgba(0,0,0,0.85); }
+@keyframes modalIn { from{transform:translateY(14px) scale(0.98);opacity:0} to{transform:translateY(0) scale(1);opacity:1} }
+.modal-header { display:flex; align-items:stretch; border-bottom:0.5px solid rgba(200,148,58,0.12); }
+.modal-year-col { background:rgba(200,148,58,0.07); border-right:0.5px solid rgba(200,148,58,0.12); padding:1.1rem 1rem; display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:88px; gap:2px; }
+.m-born-lbl { font-size:0.55rem; letter-spacing:0.12em; color:var(--muted); text-transform:uppercase; }
+.m-year { font-family:'Playfair Display',serif; font-size:1.5rem; color:var(--gold); font-weight:600; line-height:1; }
+.m-era-tag { font-size:0.53rem; letter-spacing:0.08em; color:var(--gold-dim); text-transform:uppercase; font-style:italic; margin-top:3px; text-align:center; }
+.modal-title-col { flex:1; padding:1rem 1rem 1rem 1.1rem; }
+.m-composer { font-family:'Playfair Display',serif; font-size:1.25rem; font-weight:400; color:var(--parchment); line-height:1.2; }
+.m-country { font-size:0.6rem; letter-spacing:0.12em; color:var(--muted); margin-top:5px; text-transform:uppercase; }
+.m-genre { display:inline-block; font-size:0.55rem; letter-spacing:0.1em; color:var(--gold-dim); border:0.5px solid rgba(200,148,58,0.2); padding:2px 8px; border-radius:2px; margin-top:5px; font-style:italic; }
+#m-close { align-self:flex-start; margin:0.65rem 0.65rem 0 0; background:none; border:0.5px solid rgba(200,148,58,0.18); border-radius:3px; width:25px; height:25px; color:var(--muted); font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; font-family:sans-serif; }
+#m-close:hover { border-color:var(--gold-dim); color:var(--gold); }
+.modal-body { padding:1rem 1.3rem; border-bottom:0.5px solid rgba(200,148,58,0.09); }
+.m-bio { font-size:0.9rem; color:#a89878; line-height:1.88; font-style:italic; }
+.modal-media { padding:0.85rem 1.3rem 1rem; }
+#spotify-wrap { width:100%; height:152px; border-radius:4px; overflow:hidden; margin-bottom:10px; border:0.5px solid rgba(200,148,58,0.13); background:#0a0a0a; }
+#spotify-frame { width:100%; height:100%; border:none; display:block; border-radius:4px; }
+.modal-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.listen-btn { font-family:'EB Garamond',serif; font-size:0.78rem; letter-spacing:0.05em; color:var(--gold); background:rgba(200,148,58,0.07); border:0.5px solid rgba(200,148,58,0.2); border-radius:3px; padding:5px 12px; text-decoration:none; transition:all 0.15s; font-style:italic; white-space:nowrap; }
+.listen-btn:hover { background:rgba(200,148,58,0.13); }
+.listen-btn.green { color:#1db954; background:rgba(29,185,84,0.07); border-color:rgba(29,185,84,0.25); }
+.listen-btn.green:hover { background:rgba(29,185,84,0.13); }
+.m-credit { font-size:0.52rem; letter-spacing:0.08em; color:#2a1a08; font-family:sans-serif; }
+
+/* Minor Modal (simpler) */
+#minor-modal-backdrop { display:none; position:fixed; inset:0; z-index:300; padding:1rem; align-items:center; justify-content:center; }
+#minor-modal-backdrop.open { display:flex; }
+#minor-modal { background:var(--surface2); border:0.5px solid rgba(138,96,48,0.4); border-radius:5px; width:100%; max-width:400px; overflow:hidden; animation:modalIn 0.18s cubic-bezier(0.22,1,0.36,1); box-shadow:0 20px 60px rgba(0,0,0,0.8); }
+.mm-header { display:flex; align-items:stretch; border-bottom:0.5px solid rgba(138,96,48,0.2); }
+.mm-year-col { background:rgba(138,96,48,0.08); border-right:0.5px solid rgba(138,96,48,0.2); padding:0.9rem 0.8rem; display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:72px; gap:2px; }
+.mm-born-lbl { font-size:0.52rem; letter-spacing:0.1em; color:var(--muted); text-transform:uppercase; }
+.mm-year { font-family:'Playfair Display',serif; font-size:1.2rem; color:var(--minor-pin); font-weight:600; line-height:1; }
+.mm-era { font-size:0.5rem; color:#6a4820; text-transform:uppercase; font-style:italic; margin-top:2px; text-align:center; letter-spacing:0.07em; }
+.mm-title-col { flex:1; padding:0.85rem 0.85rem 0.85rem 1rem; }
+.mm-name { font-family:'Playfair Display',serif; font-size:1.05rem; font-weight:400; color:var(--parchment); line-height:1.2; }
+.mm-country { font-size:0.58rem; letter-spacing:0.1em; color:var(--muted); margin-top:4px; text-transform:uppercase; }
+.mm-genre { display:inline-block; font-size:0.52rem; letter-spacing:0.08em; color:#6a4820; border:0.5px solid rgba(138,96,48,0.2); padding:2px 7px; border-radius:2px; margin-top:4px; font-style:italic; }
+#mm-close { align-self:flex-start; margin:0.6rem 0.6rem 0 0; background:none; border:0.5px solid rgba(138,96,48,0.2); border-radius:3px; width:23px; height:23px; color:var(--muted); font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; font-family:sans-serif; }
+#mm-close:hover { border-color:var(--minor-pin); color:var(--minor-pin); }
+.mm-body { padding:0.85rem 1.1rem 1rem; }
+.mm-bio { font-size:0.84rem; color:#907860; line-height:1.8; font-style:italic; }
+.mm-yt-link { display:inline-flex; align-items:center; gap:5px; margin-top:0.75rem; font-family:'EB Garamond',serif; font-size:0.76rem; color:var(--minor-pin); text-decoration:none; font-style:italic; transition:color 0.15s; }
+.mm-yt-link:hover { color:#b07840; }
+
+#loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-style:italic; font-size:0.9rem; letter-spacing:0.1em; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div class="header-left">
+      <h1>The Sound of <em>History</em></h1>
+      <div class="sub">Classical &amp; Contemporary · 1600 – 2025 · Drag the timeline</div>
+    </div>
+    <div id="header-right">
+      <div id="legend">
+        <div class="legend-item"><div class="legend-dot major"></div>Major figures</div>
+        <div class="legend-item"><div class="legend-dot minor"></div>Secondary figures</div>
+      </div>
+      <div id="era-badge">Early Baroque</div>
+      <div id="composer-card">
+        <div class="c-name" id="c-name"></div>
+        <div class="c-meta" id="c-meta"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="map-wrap">
+    <svg id="map-svg"></svg>
+    <div id="loading">Loading map…</div>
+  </div>
+
+  <div id="timeline-wrap">
+    <div id="era-markers"></div>
+    <div id="scrubber-track">
+      <div id="track-bg"></div>
+      <div id="track-eras"></div>
+      <div id="track-fill"></div>
+      <div id="scrubber-handle"><div id="year-tooltip">1600</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Major composer modal -->
+<div id="modal-backdrop">
+  <div id="modal">
+    <div class="modal-header">
+      <div class="modal-year-col">
+        <div class="m-born-lbl">Born</div>
+        <div class="m-year" id="m-year"></div>
+        <div class="m-era-tag" id="m-era"></div>
+      </div>
+      <div class="modal-title-col">
+        <div class="m-composer" id="m-name"></div>
+        <div class="m-country"  id="m-country"></div>
+        <div class="m-genre"    id="m-genre"></div>
+      </div>
+      <button id="m-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><p class="m-bio" id="m-bio"></p></div>
+    <div class="modal-media">
+      <div id="spotify-wrap">
+        <iframe id="spotify-frame" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+      </div>
+      <div class="modal-footer">
+        <a class="listen-btn green" id="spotify-btn" href="#" target="_blank" rel="noopener">▶ Open in Spotify</a>
+        <a class="listen-btn" id="yt-btn" href="#" target="_blank" rel="noopener">▶ YouTube</a>
+        <span class="m-credit">30s preview · full track if logged in</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Minor composer modal -->
+<div id="minor-modal-backdrop">
+  <div id="minor-modal">
+    <div class="mm-header">
+      <div class="mm-year-col">
+        <div class="mm-born-lbl">Born</div>
+        <div class="mm-year" id="mm-year"></div>
+        <div class="mm-era"  id="mm-era"></div>
+      </div>
+      <div class="mm-title-col">
+        <div class="mm-name"    id="mm-name"></div>
+        <div class="mm-country" id="mm-country"></div>
+        <div class="mm-genre"   id="mm-genre"></div>
+      </div>
+      <button id="mm-close" onclick="closeMinorModal()">✕</button>
+    </div>
+    <div class="mm-body">
+      <p class="mm-bio" id="mm-bio"></p>
+      <div id="mm-spotify-wrap" style="width:100%;height:80px;border-radius:3px;overflow:hidden;margin:10px 0 6px;border:0.5px solid rgba(138,96,48,0.2);background:#0a0a0a;">
+        <iframe id="mm-spotify-frame" style="width:100%;height:100%;border:none;display:block;" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="mm-yt-link" id="mm-spotify" href="#" target="_blank" rel="noopener" style="color:#1db954;">▶ Open in Spotify</a>
+        <a class="mm-yt-link" id="mm-yt" href="#" target="_blank" rel="noopener">▶ YouTube</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script>
+const ERAS = [
+  { name:"Early Baroque",  start:1600, end:1649, color:"#7a5820" },
+  { name:"Baroque",        start:1650, end:1749, color:"#8a6830" },
+  { name:"Classical",      start:1750, end:1819, color:"#5a7840" },
+  { name:"Romantic",       start:1820, end:1899, color:"#3a6070" },
+  { name:"Late Romantic",  start:1900, end:1939, color:"#3a5068" },
+  { name:"Modern",         start:1940, end:1979, color:"#3a4560" },
+  { name:"Minimalist",     start:1980, end:1999, color:"#4a4070" },
+  { name:"Contemporary",   start:2000, end:2025, color:"#5a3a60" },
+];
+const START_YEAR=1600, END_YEAR=2025, SPAN=END_YEAR-START_YEAR;
+function getEra(y){ return ERAS.find(e=>y>=e.start&&y<=e.end)||ERAS[ERAS.length-1]; }
+
+// ── MAJOR COMPOSERS (tier 1 — gold, full modal + YouTube) ─
+const major = [
+  { name:"Claudio Monteverdi",  country:"Italy",        iso:"ITA", born:1567, active:[1600,1643], era:"Early Baroque", genre:"Opera · Madrigal",          lat:45.4, lon:10.9, bio:"The father of opera. L'Orfeo in 1607 was the first true opera. He spent 30 years at St Mark's Basilica in Venice defining sacred polyphony. Without Monteverdi, there is no Western classical tradition.", search:"Monteverdi L'Orfeo" },
+  { name:"Jan Sweelinck",       country:"Netherlands",  iso:"NLD", born:1562, active:[1580,1621], era:"Early Baroque", genre:"Keyboard · Vocal",           lat:52.4, lon:4.9,  bio:"Organist at the Oude Kerk in Amsterdam for 44 years. He taught virtually every important German organist of the next generation. His teaching lineage flows directly to Bach.", search:"Sweelinck Fantasy in Echo" },
+  { name:"Heinrich Schütz",     country:"Germany",      iso:"DEU", born:1585, active:[1611,1672], era:"Early Baroque", genre:"Sacred · Vocal",             lat:51.1, lon:13.7, bio:"The father of German music, bridging Italian Baroque innovation and German Lutheran tradition. He studied with Giovanni Gabrieli in Venice and brought that knowledge back to Dresden.", search:"Schutz Saul Saul" },
+  { name:"Jean-Baptiste Lully", country:"France",       iso:"FRA", born:1632, active:[1652,1687], era:"Baroque",       genre:"Opera · Ballet",             lat:48.9, lon:2.3,  bio:"Born in Florence, became the musical dictator of Louis XIV's Versailles. Invented French opera and the French overture form. Died from gangrene after striking his own foot with his conducting staff.", search:"Lully Armide" },
+  { name:"Henry Purcell",       country:"England",      iso:"GBR", born:1659, active:[1679,1695], era:"Baroque",       genre:"Opera · Sacred · Theatre",   lat:51.5, lon:-0.1, bio:"England's greatest composer — died at 36 and left a gap that English music took two centuries to fill. Dido's Lament is one of the most heartbreaking pieces ever written.", search:"Purcell Dido's Lament" },
+  { name:"François Couperin",   country:"France",       iso:"FRA", born:1668, active:[1685,1730], era:"Baroque",       genre:"Keyboard · Chamber",         lat:48.8, lon:2.2,  bio:"Couperin le Grand — the most refined keyboard composer of the French Baroque. Four books of Pièces de clavecin, full of delicate wit and ornamentation. Bach studied him intently.", search:"Couperin Les Barricades Mysterieuses" },
+  { name:"Antonio Vivaldi",     country:"Italy",        iso:"ITA", born:1678, active:[1703,1741], era:"Baroque",       genre:"Concerto · Opera",           lat:45.4, lon:12.3, bio:"The Red Priest of Venice. Over 500 concertos including The Four Seasons — the most recognised classical piece ever written. He almost single-handedly established the concerto form.", search:"Vivaldi Four Seasons" },
+  { name:"Johann Sebastian Bach",country:"Germany",     iso:"DEU", born:1685, active:[1703,1750], era:"Baroque",       genre:"Counterpoint · Sacred",      lat:51.3, lon:12.4, bio:"The supreme master of Western music. The Brandenburg Concertos, the Well-Tempered Clavier, the St Matthew Passion, the Mass in B Minor — the bedrock of the entire classical tradition.", search:"Bach Brandenburg Concertos" },
+  { name:"George F. Handel",    country:"Germany · England", iso:"DEU", born:1685, active:[1706,1759], era:"Baroque",  genre:"Opera · Oratorio",           lat:51.5, lon:13.4, bio:"Born in Halle, made his name in Italy, became an English institution. Messiah premiered in Dublin in 1742. His Water Music was played on the Thames for King George I.", search:"Handel Messiah Hallelujah" },
+  { name:"Domenico Scarlatti",  country:"Italy · Spain",iso:"ITA", born:1685, active:[1705,1757], era:"Baroque",       genre:"Keyboard · Sonata",          lat:40.8, lon:14.2, bio:"His 555 keyboard sonatas are among the most inventive pieces ever written — technically dazzling and unlike anything his contemporaries produced. Spent most of his career in Lisbon and Madrid.", search:"Scarlatti Keyboard Sonata K141" },
+  { name:"Joseph Haydn",        country:"Austria",      iso:"AUT", born:1732, active:[1757,1809], era:"Classical",     genre:"Symphony · String Quartet",  lat:47.8, lon:16.5, bio:"The father of the symphony and the string quartet. 30 years at the Esterházy court writing 104 symphonies. His late London symphonies are masterpieces of wit and structural ingenuity. He taught Beethoven.", search:"Haydn Symphony 94 Surprise" },
+  { name:"Wolfgang A. Mozart",  country:"Austria",      iso:"AUT", born:1756, active:[1762,1791], era:"Classical",     genre:"Opera · Symphony · Concerto",lat:47.8, lon:13.0, bio:"The most naturally gifted composer in history. In 35 years: Don Giovanni, The Magic Flute, the Jupiter Symphony, the Clarinet Concerto, and the unfinished Requiem. He died penniless at 35.", search:"Mozart Symphony No 40" },
+  { name:"Ludwig van Beethoven",country:"Germany",      iso:"DEU", born:1770, active:[1792,1827], era:"Romantic",      genre:"Symphony · Sonata · Chamber",lat:50.7, lon:7.1,  bio:"The hinge between Classical and Romantic eras. He took the forms Haydn and Mozart had perfected and cracked them open with the force of his personality. The Fifth, the Eroica, the Ninth. He wrote the Ninth completely deaf.", search:"Beethoven Symphony No 9" },
+  { name:"Franz Schubert",      country:"Austria",      iso:"AUT", born:1797, active:[1814,1828], era:"Romantic",      genre:"Lied · Chamber · Symphony",  lat:48.2, lon:16.4, bio:"In 31 years: over 600 songs, 9 symphonies, and some of the most heartbreaking chamber music ever composed. Winterreise is the pinnacle of the German Lied. He died a year after Beethoven.", search:"Schubert Winterreise" },
+  { name:"Frédéric Chopin",     country:"Poland",       iso:"POL", born:1810, active:[1829,1849], era:"Romantic",      genre:"Piano",                      lat:52.2, lon:21.0, bio:"The poet of the piano. Spent most of his adult life in Paris but Poland never left him — the Polonaises and Mazurkas carry an entire nation's grief. Everything he wrote was for the piano, and everything was perfect.", search:"Chopin Nocturne Op 9 No 2" },
+  { name:"Robert Schumann",     country:"Germany",      iso:"DEU", born:1810, active:[1830,1856], era:"Romantic",      genre:"Piano · Lied · Symphonic",   lat:50.8, lon:12.9, bio:"One of the great Romantic voices — deeply personal, emotionally urgent. Kinderszenen, the Piano Concerto, the song cycles. His mental illness cut his career short; he died in an asylum at 46.", search:"Schumann Piano Concerto" },
+  { name:"Franz Liszt",         country:"Hungary",      iso:"HUN", born:1811, active:[1838,1886], era:"Romantic",      genre:"Piano · Symphonic",          lat:47.5, lon:19.0, bio:"The first rock star of classical music. He invented the solo piano recital. So famous that women threw gloves at him on stage. He also invented the symphonic poem and influenced Wagner, Brahms, and Debussy.", search:"Liszt Piano Sonata B minor" },
+  { name:"Richard Wagner",      country:"Germany",      iso:"DEU", born:1813, active:[1836,1883], era:"Romantic",      genre:"Music Drama",                lat:51.3, lon:12.4, bio:"The most controversial and influential composer in history. He invented the Gesamtkunstwerk — total artwork uniting music, drama, and staging. The Ring Cycle took 26 years. Tristan und Isolde invented a new harmonic language.", search:"Wagner Ride of the Valkyries" },
+  { name:"Giuseppe Verdi",      country:"Italy",        iso:"ITA", born:1813, active:[1839,1901], era:"Romantic",      genre:"Opera",                      lat:44.9, lon:10.1, bio:"The dominant force in Italian opera for 60 years. Rigoletto, La Traviata, Aida, Otello, Falstaff. A symbol of Italian national identity — audiences would chant 'Viva VERDI' as a coded cry for unification.", search:"Verdi La Traviata" },
+  { name:"Bedřich Smetana",     country:"Czech Rep.",   iso:"CZE", born:1824, active:[1848,1884], era:"Romantic",      genre:"Symphonic Poem · Opera",     lat:50.1, lon:14.4, bio:"The father of Czech music. Má vlast — My Homeland — depicts Bohemia's landscapes in six symphonic poems. Vltava is one of the most beloved pieces of the 19th century. Like Beethoven, he composed his late masterpieces in complete deafness.", search:"Smetana Vltava" },
+  { name:"Johannes Brahms",     country:"Germany",      iso:"DEU", born:1833, active:[1854,1897], era:"Romantic",      genre:"Symphony · Chamber · Lied",  lat:53.6, lon:10.0, bio:"The Classical Romantic — so in awe of Beethoven he took 21 years to finish his First Symphony. Von Bülow called it Beethoven's Tenth. Four symphonies, the German Requiem, chamber music of the highest order.", search:"Brahms Symphony 4" },
+  { name:"Camille Saint-Saëns", country:"France",       iso:"FRA", born:1835, active:[1853,1921], era:"Romantic",      genre:"Concerto · Orchestral",      lat:48.9, lon:2.3,  bio:"A prodigy who became a pillar of French musical life. The Organ Symphony, the Cello Concerto, and The Carnival of the Animals. Lived to 86 and kept writing to the end.", search:"Saint-Saens Symphony No 3 Organ" },
+  { name:"Edvard Grieg",        country:"Norway",       iso:"NOR", born:1843, active:[1865,1907], era:"Romantic",      genre:"Piano · Orchestral",         lat:60.4, lon:5.3,  bio:"The voice of Norwegian Romanticism. In the Hall of the Mountain King is one of the most recognisable pieces ever written. His Piano Concerto is the definitive Scandinavian concerto.", search:"Grieg Piano Concerto" },
+  { name:"Antonín Dvořák",      country:"Czech Rep.",   iso:"CZE", born:1841, active:[1862,1904], era:"Romantic",      genre:"Symphony · Chamber",         lat:50.1, lon:14.8, bio:"Three years in New York gave him the New World Symphony, inspired by spirituals and Native American music. His Cello Concerto is the greatest ever written for that instrument.", search:"Dvorak New World Symphony" },
+  { name:"Pyotr I. Tchaikovsky",country:"Russia",       iso:"RUS", born:1840, active:[1866,1893], era:"Romantic",      genre:"Ballet · Symphony · Opera",  lat:55.8, lon:37.6, bio:"Russia's most beloved composer. Swan Lake, The Sleeping Beauty, The Nutcracker — the three greatest ballets ever written, all his. The 1812 Overture, Piano Concerto No.1, six symphonies of extraordinary emotional range.", search:"Tchaikovsky Swan Lake" },
+  { name:"Modest Mussorgsky",   country:"Russia",       iso:"RUS", born:1839, active:[1858,1881], era:"Romantic",      genre:"Opera · Piano",              lat:55.8, lon:37.4, bio:"The rawest and most original of the Russian Nationalists. Boris Godunov is a masterpiece of operatic drama. Pictures at an Exhibition — later orchestrated by Ravel — is vivid programme music. He died an alcoholic at 42.", search:"Mussorgsky Pictures at an Exhibition" },
+  { name:"N. Rimsky-Korsakov",  country:"Russia",       iso:"RUS", born:1844, active:[1865,1908], era:"Romantic",      genre:"Opera · Orchestral",         lat:59.9, lon:30.3, bio:"The master orchestrator. Scheherazade is a dazzling monument to colour and narrative. He taught Stravinsky and edited Mussorgsky's unfinished scores, preserving works that might otherwise have been lost.", search:"Rimsky-Korsakov Scheherazade" },
+  { name:"César Franck",        country:"Belgium",      iso:"BEL", born:1822, active:[1842,1890], era:"Romantic",      genre:"Organ · Symphony · Chamber", lat:50.9, lon:4.4,  bio:"Belgian-born, Parisian by adoption, organist by vocation. His Symphony in D minor — written at 67 — is one of the most original in the repertoire. The Violin Sonata is among the most loved chamber works ever written.", search:"Cesar Franck Symphony D minor" },
+  { name:"Giacomo Puccini",     country:"Italy",        iso:"ITA", born:1858, active:[1884,1924], era:"Late Romantic", genre:"Opera",                      lat:43.8, lon:10.5, bio:"The last great Italian opera composer. La Bohème, Tosca, Madama Butterfly, Turandot — four of the most performed operas in the world. Nessun Dorma is the most famous tenor aria ever written.", search:"Puccini Nessun Dorma" },
+  { name:"Isaac Albéniz",       country:"Spain",        iso:"ESP", born:1860, active:[1880,1909], era:"Romantic",      genre:"Piano",                      lat:41.4, lon:2.2,  bio:"The composer who gave the world Iberia — twelve piano pieces capturing the soul of Spain with an intoxicating fusion of flamenco, Arabic, and classical influences. He studied with Liszt.", search:"Albeniz Asturias" },
+  { name:"Jean Sibelius",       country:"Finland",      iso:"FIN", born:1865, active:[1889,1926], era:"Romantic",      genre:"Symphony · Symphonic Poem",  lat:60.2, lon:24.9, bio:"Finland's national composer. Finlandia was so politically powerful the Russian authorities banned it. His seven symphonies are a journey from late Romanticism into something stark and modern. He spent his last 30 years in silence.", search:"Sibelius Finlandia" },
+  { name:"Carl Nielsen",        country:"Denmark",      iso:"DNK", born:1865, active:[1892,1931], era:"Romantic",      genre:"Symphony · Concerto",        lat:55.7, lon:12.6, bio:"Denmark's most important composer. His Symphony No.4 'The Inextinguishable' and No.5 are among the most original in the repertoire, full of raw energy and what he called 'the will to live'.", search:"Nielsen Symphony No 4 Inextinguishable" },
+  { name:"Edward Elgar",        country:"England",      iso:"GBR", born:1857, active:[1890,1934], era:"Late Romantic", genre:"Orchestral · Choral",        lat:52.2, lon:-2.2, bio:"The first major English composer since Purcell. The Cello Concerto — written after WWI destroyed everything he believed in — is one of the most emotionally devastating works in the repertoire.", search:"Elgar Cello Concerto Jacqueline du Pre" },
+  { name:"Gustav Mahler",       country:"Austria",      iso:"AUT", born:1860, active:[1880,1911], era:"Late Romantic", genre:"Symphony · Song Cycle",      lat:48.2, lon:16.4, bio:"The last great symphonist and bridge between Romantic and Modern eras. Nine completed symphonies. Das Lied von der Erde is a meditation on death and beauty. Director of the Vienna Court Opera.", search:"Mahler Symphony No 5 Adagietto" },
+  { name:"Richard Strauss",     country:"Germany",      iso:"DEU", born:1864, active:[1885,1949], era:"Late Romantic", genre:"Tone Poem · Opera",          lat:48.1, lon:11.6, bio:"The last of the great German Romantics. Also Sprach Zarathustra opened 2001: A Space Odyssey. Der Rosenkavalier is one of the greatest operas ever written. Four Last Songs, written at 84, are extraordinary.", search:"Richard Strauss Four Last Songs" },
+  { name:"Claude Debussy",      country:"France",       iso:"FRA", born:1862, active:[1884,1918], era:"Late Romantic", genre:"Impressionist",              lat:48.9, lon:2.3,  bio:"The inventor of musical Impressionism. Dissolved the rules of tonality and replaced them with atmosphere and colour. La Mer, Clair de Lune, Pelléas et Mélisande — a completely new language for music.", search:"Debussy Clair de Lune" },
+  { name:"Maurice Ravel",       country:"France",       iso:"FRA", born:1875, active:[1895,1937], era:"Late Romantic", genre:"Orchestral · Piano",         lat:48.9, lon:2.4,  bio:"The Swiss watchmaker of French music — every detail perfect. Boléro is the most hypnotic piece ever written. Daphnis et Chloé is the greatest ballet score of the 20th century.", search:"Ravel Bolero" },
+  { name:"Sergei Rachmaninoff", country:"Russia",       iso:"RUS", born:1873, active:[1892,1943], era:"Late Romantic", genre:"Piano · Symphonic",          lat:55.8, lon:37.5, bio:"The last great Romantic. The Second Piano Concerto is the most beloved concerto ever written. He left Russia after the revolution and never returned, carrying his country inside him for the rest of his life.", search:"Rachmaninoff Piano Concerto No 2" },
+  { name:"Ralph Vaughan Williams",country:"England",    iso:"GBR", born:1872, active:[1903,1958], era:"Late Romantic", genre:"Symphony · Orchestral",      lat:51.5, lon:-0.1, bio:"The architect of the English musical renaissance. The Lark Ascending is the most-played piece of classical music on UK radio — year after year, decade after decade.", search:"Vaughan Williams The Lark Ascending" },
+  { name:"Manuel de Falla",     country:"Spain",        iso:"ESP", born:1876, active:[1905,1946], era:"Late Romantic", genre:"Ballet · Orchestral",        lat:40.4, lon:-3.7, bio:"The defining figure of 20th century Spanish music. El amor brujo and The Three-Cornered Hat fuse flamenco with modernist orchestration uniquely. Left Spain after the Civil War and died in Argentina.", search:"Manuel de Falla El Amor Brujo" },
+  { name:"Béla Bartók",         country:"Hungary",      iso:"HUN", born:1881, active:[1903,1945], era:"Modern",        genre:"Orchestra · String Quartet", lat:47.5, lon:19.0, bio:"One of the most important composers of the 20th century and one of the first ethnomusicologists. Spent years recording folk music in Hungarian and Romanian villages. His string quartets are among the greatest ever written.", search:"Bartok Concerto for Orchestra" },
+  { name:"Igor Stravinsky",     country:"Russia · France",iso:"RUS", born:1882, active:[1907,1971], era:"Modern",     genre:"Ballet · Neo-Classical",     lat:55.8, lon:37.6, bio:"The most influential composer of the 20th century. The Rite of Spring caused a riot at its premiere in 1913. He then invented neo-classicism, then serialism. Always ahead, always moving.", search:"Stravinsky Rite of Spring" },
+  { name:"Arnold Schoenberg",   country:"Austria",      iso:"AUT", born:1874, active:[1899,1951], era:"Modern",        genre:"Atonal · Twelve-Tone",       lat:48.2, lon:16.4, bio:"The most radical composer in history — abandoned tonality entirely and invented the twelve-tone method. Controversial, divisive, and absolutely indispensable. Fled the Nazis to Los Angeles.", search:"Schoenberg Verklarte Nacht" },
+  { name:"Leoš Janáček",        country:"Czech Rep.",   iso:"CZE", born:1854, active:[1904,1928], era:"Modern",        genre:"Opera · Chamber",            lat:49.2, lon:16.6, bio:"The most radical of the Czech composers. Developed 'speech melody' — music derived from the rhythms of natural speech. Jenůfa, Kátya Kabanová, and the Sinfonietta are his landmarks.", search:"Janacek Sinfonietta" },
+  { name:"Dmitri Shostakovich", country:"Russia",       iso:"RUS", born:1906, active:[1926,1975], era:"Modern",        genre:"Symphony · Chamber",         lat:55.8, lon:37.6, bio:"The voice of the Soviet era — writing under constant threat, encoding protest into officially approved music. The Fifth Symphony: either a sincere tribute or a devastating, sarcastic rebuke of Soviet power. That ambiguity is the point.", search:"Shostakovich Symphony No 5" },
+  { name:"Benjamin Britten",    country:"England",      iso:"GBR", born:1913, active:[1937,1976], era:"Modern",        genre:"Opera · Orchestral · Vocal", lat:52.2, lon:1.6,  bio:"The dominant figure in 20th century British music. Peter Grimes put English opera back on the world stage. The Young Person's Guide to the Orchestra is the greatest introduction to the orchestral world ever written.", search:"Britten War Requiem" },
+  { name:"Olivier Messiaen",    country:"France",       iso:"FRA", born:1908, active:[1929,1992], era:"Modern",        genre:"Organ · Orchestral · Piano", lat:48.9, lon:2.3,  bio:"The great mystic of 20th century music. The Quartet for the End of Time was written and premiered in a German prisoner of war camp. A devout Catholic who incorporated birdsong and Hindu rhythms into his music.", search:"Messiaen Quartet for the End of Time" },
+  { name:"György Ligeti",       country:"Hungary · Austria",iso:"HUN", born:1923, active:[1953,2006], era:"Modern",   genre:"Orchestral · Piano · Chamber",lat:47.5, lon:19.0, bio:"The supreme modernist. His micropolyphony — dense clouds of independent voices — created a completely new sound world. Kubrick used Atmosphères and Lux Aeterna in 2001: A Space Odyssey.", search:"Ligeti Atmospheres" },
+  { name:"Krzysztof Penderecki",country:"Poland",       iso:"POL", born:1933, active:[1959,2020], era:"Modern",        genre:"Orchestral · Choral",        lat:50.1, lon:19.9, bio:"Threnody for the Victims of Hiroshima — scored for 52 strings using entirely new notation — was a sonic shock in 1960. His later work moved toward neo-Romanticism. Kubrick used his music in The Shining.", search:"Penderecki Threnody for the Victims of Hiroshima" },
+  { name:"Henryk Górecki",      country:"Poland",       iso:"POL", born:1933, active:[1958,2010], era:"Modern",        genre:"Choral · Symphonic",         lat:50.3, lon:18.7, bio:"Symphony No.3 — the Symphony of Sorrowful Songs — sat unperformed for years, then a 1992 recording sold over a million copies and became the best-selling recording of a contemporary classical work in history.", search:"Gorecki Symphony No 3" },
+  { name:"Sofia Gubaidulina",   country:"Russia",       iso:"RUS", born:1931, active:[1965,2025], era:"Modern",        genre:"Chamber · Orchestral · Sacred",lat:55.8, lon:37.6, bio:"One of the great living composers — a deeply spiritual voice fusing Eastern and Western musical traditions. Offertorium, her violin concerto written for Gidon Kremer, is one of the most emotionally overwhelming works of the late 20th century.", search:"Gubaidulina Offertorium" },
+  { name:"Alfred Schnittke",    country:"Russia",       iso:"RUS", born:1934, active:[1960,1998], era:"Modern",        genre:"Polystylistic · Orchestra",  lat:55.8, lon:37.5, bio:"The master of polystylism — colliding musical styles from different eras in the same piece, creating profound irony and beauty. His Concerto Grosso No.1 and Viola Concerto are among the great works of the Soviet era.", search:"Schnittke Concerto Grosso No 1" },
+  { name:"Arvo Pärt",           country:"Estonia",      iso:"EST", born:1935, active:[1976,2025], era:"Minimalist",    genre:"Sacred · Choral · Chamber",  lat:59.4, lon:24.7, bio:"The most performed living classical composer in the world. Pärt invented tintinnabuli — a method of pure, bell-like simplicity. Spiegel im Spiegel, Fratres, Für Alina — music that sounds like it has always existed.", search:"Arvo Part Spiegel im Spiegel" },
+  { name:"John Tavener",        country:"England",      iso:"GBR", born:1944, active:[1968,2013], era:"Minimalist",    genre:"Sacred · Choral",            lat:51.5, lon:-0.1, bio:"Song for Athene, performed at Diana's funeral, made him the most suddenly famous British composer since Elgar. A convert to the Russian Orthodox Church, he spent his life seeking a music of pure spiritual transparency.", search:"Tavener Song for Athene" },
+  { name:"Ennio Morricone",     country:"Italy",        iso:"ITA", born:1928, active:[1961,2020], era:"Contemporary",  genre:"Film Music · Orchestral",    lat:41.9, lon:12.5, bio:"The greatest film composer in history. The Good the Bad and the Ugly, Cinema Paradiso, The Mission, Once Upon a Time in America — each score a complete world in itself. He composed over 500 scores.", search:"Ennio Morricone The Good The Bad And The Ugly" },
+  { name:"Kaija Saariaho",      country:"Finland",      iso:"FIN", born:1952, active:[1980,2023], era:"Contemporary",  genre:"Opera · Orchestral · Electronic",lat:60.2, lon:24.9, bio:"The most celebrated Finnish composer of her generation. L'Amour de loin premiered at Salzburg in 2000 and established her as a major figure. Her sound world fuses electronics and acoustic instruments into shimmering textures. Died 2023.", search:"Kaija Saariaho L'Amour de Loin" },
+  { name:"Valentin Silvestrov", country:"Ukraine",      iso:"UKR", born:1937, active:[1970,2025], era:"Contemporary",  genre:"Symphony · Chamber · Song",  lat:50.5, lon:30.5, bio:"Ukraine's greatest living composer. He developed 'meta-music': music that seems to emerge from silence and return to it. Since Russia's invasion of Ukraine in 2022, his music has taken on an even deeper resonance worldwide.", search:"Valentin Silvestrov Bagatelle" },
+  { name:"Max Richter",         country:"Germany · England",iso:"DEU", born:1966, active:[2002,2025], era:"Contemporary", genre:"Neo-Classical · Film",    lat:51.5, lon:-0.1, bio:"The composer who made neo-classical music a mainstream phenomenon. Sleep — an eight-hour lullaby — was performed with audiences sleeping in beds. Recomposed: Vivaldi's Four Seasons streams over a billion times a year.", search:"Max Richter On The Nature of Daylight" },
+  { name:"Nils Frahm",          country:"Germany",      iso:"DEU", born:1982, active:[2009,2025], era:"Contemporary",  genre:"Neo-Classical · Electronic", lat:52.5, lon:13.4, bio:"The artist who made the piano feel new again. Spaces and All Melody fuse acoustic piano with electronics in a way that speaks equally to classical and electronic music fans. His concerts sell out within minutes.", search:"Nils Frahm Says" },
+  { name:"Ludovico Einaudi",    country:"Italy",        iso:"ITA", born:1955, active:[1996,2025], era:"Contemporary",  genre:"Neo-Classical · Piano",      lat:45.5, lon:9.2,  bio:"The most commercially successful classical pianist of the 21st century. Divenire, Nuvole Bianche, and Experience have hundreds of millions of streams and introduced a generation to the piano who'd never listened to classical music before.", search:"Ludovico Einaudi Nuvole Bianche" },
+  { name:"Ólafur Arnalds",      country:"Iceland",      iso:"ISL", born:1986, active:[2007,2025], era:"Contemporary",  genre:"Neo-Classical · Electronic", lat:64.1, lon:-21.9, bio:"The Reykjavik composer who fused chamber strings, piano, and electronic processing into something entirely his own. re:member and some kind of peace made him one of the most streamed contemporary classical artists on the planet.", search:"Olafur Arnalds Near Light" },
+  { name:"Anna Thorvaldsdottir",country:"Iceland",      iso:"ISL", born:1977, active:[2007,2025], era:"Contemporary",  genre:"Orchestral · Chamber",       lat:64.2, lon:-21.7, bio:"One of the most celebrated composers of her generation. Metacosmos was premiered at Carnegie Hall by the New York Philharmonic. Her sound world is intensely physical — geological, textural, volcanic. Iceland in music form.", search:"Anna Thorvaldsdottir Aeriality" },
+  { name:"Thomas Adès",         country:"England",      iso:"GBR", born:1971, active:[1993,2025], era:"Contemporary",  genre:"Opera · Orchestral · Piano", lat:51.5, lon:-0.1, bio:"The most celebrated British composer of his generation. The Exterminating Angel — based on the Buñuel film — premiered at Salzburg in 2016 and played at the Metropolitan Opera. His orchestral work Tevot is among the most admired new pieces of the century.", search:"Thomas Ades The Exterminating Angel" },
+];
+
+// ── SECONDARY COMPOSERS (tier 2 — dimmer pins, brief modal, no YouTube embed) ─
+const secondary = [
+  // Early Baroque
+  { name:"Girolamo Frescobaldi", country:"Italy",       iso:"ITA", born:1583, active:[1608,1643], era:"Early Baroque", genre:"Keyboard · Organ",       lat:44.8, lon:11.6, bio:"The greatest Italian keyboardist of his day and the most influential organist before Bach. His Toccatas and Fantasias for organ established the improvisatory style that defined the Baroque keyboard tradition. Bach copied out his works by hand." },
+  { name:"Claudio Merulo",       country:"Italy",       iso:"ITA", born:1533, active:[1600,1604], era:"Early Baroque", genre:"Keyboard · Organ",       lat:45.4, lon:12.3, bio:"One of the last great Renaissance-Baroque keyboard masters. Organist at St Mark's Basilica in Venice before Monteverdi. His toccatas are virtuoso showpieces that bridge Renaissance and Baroque styles." },
+  { name:"Michael Praetorius",   country:"Germany",     iso:"DEU", born:1571, active:[1605,1621], era:"Early Baroque", genre:"Sacred · Vocal",         lat:52.2, lon:10.5, bio:"The most prolific German composer of the early 17th century. His Syntagma Musicum is an invaluable encyclopaedia of music of the era. He adapted Italian Baroque innovations to the German Lutheran tradition." },
+  { name:"Samuel Scheidt",       country:"Germany",     iso:"DEU", born:1587, active:[1609,1654], era:"Early Baroque", genre:"Keyboard · Sacred",      lat:51.5, lon:11.9, bio:"One of the triumvirate of early German Baroque masters with Schütz and Schein. His Tabulatura Nova was the most important German keyboard collection of the early 17th century." },
+  { name:"Johann H. Schein",     country:"Germany",     iso:"DEU", born:1586, active:[1615,1630], era:"Early Baroque", genre:"Sacred · Vocal",         lat:51.3, lon:12.4, bio:"Bach's predecessor as Cantor of St Thomas Church in Leipzig. He brought the Italian madrigal style into German Lutheran music and published some of the most inventive sacred concertos of the early Baroque." },
+  { name:"Juan Bautista Cabanilles",country:"Spain",    iso:"ESP", born:1644, active:[1665,1712], era:"Baroque",       genre:"Keyboard · Organ",       lat:39.5, lon:-0.4, bio:"The greatest Spanish organist of the Baroque era. He spent his entire career as organist at Valencia Cathedral and composed over 200 keyboard works of great variety and ingenuity. The Spanish Buxtehude." },
+  // Baroque
+  { name:"Dieterich Buxtehude",  country:"Germany",     iso:"DEU", born:1637, active:[1668,1707], era:"Baroque",       genre:"Organ · Sacred",         lat:53.9, lon:10.7, bio:"The most important North German organist before Bach — and one of Bach's direct influences. The young Bach walked 250 miles from Arnstadt to Lübeck just to hear him play. His organ works and sacred cantatas are masterpieces of the North German Baroque." },
+  { name:"Johann Pachelbel",     country:"Germany",     iso:"DEU", born:1653, active:[1677,1706], era:"Baroque",       genre:"Keyboard · Sacred",      lat:49.5, lon:11.1, bio:"His Canon in D is the most recognised piece of Baroque music after Vivaldi's Four Seasons. He was Bach's teacher's teacher, and his organ works established the south German Baroque keyboard style. More than just a one-hit wonder." },
+  { name:"Marc-Antoine Charpentier",country:"France",   iso:"FRA", born:1643, active:[1670,1704], era:"Baroque",       genre:"Sacred · Opera",         lat:48.9, lon:2.3,  bio:"The composer whose Prelude to a Te Deum opens every Eurovision broadcast. A student of Carissimi in Rome, he returned to Paris and produced some of the finest sacred music of the French Baroque, in constant rivalry with Lully's monopoly." },
+  { name:"Marin Marais",         country:"France",      iso:"FRA", born:1656, active:[1686,1725], era:"Baroque",       genre:"Viol · Chamber",         lat:48.9, lon:2.3,  bio:"The greatest French viol player of his era and a composer of extraordinary refinement. His five books of Pièces de viole contain some of the most individual and expressive music of the French Baroque. The film Tous les Matins du Monde is based on his life." },
+  { name:"Alessandro Scarlatti", country:"Italy",       iso:"ITA", born:1660, active:[1679,1725], era:"Baroque",       genre:"Opera · Sacred",         lat:40.8, lon:14.2, bio:"The father of the Neapolitan school of opera and father of Domenico Scarlatti. He established the da capo aria form that dominated Baroque opera. His 114 operas and hundreds of cantatas shaped the entire Baroque vocal tradition." },
+  { name:"Georg Ph. Telemann",   country:"Germany",     iso:"DEU", born:1681, active:[1704,1767], era:"Baroque",       genre:"Opera · Orchestral",     lat:53.6, lon:10.0, bio:"The most prolific composer in history — over 3,000 works. More highly regarded than Bach in his own lifetime. His music is elegant, witty, and expertly crafted. The Tafelmusik suites are among the most enjoyable orchestral works of the Baroque.", },
+  { name:"Johann Adolf Hasse",   country:"Germany",     iso:"DEU", born:1699, active:[1721,1783], era:"Baroque",       genre:"Opera",                  lat:53.6, lon:10.0, bio:"The most celebrated opera composer of the mid-18th century — more performed than Handel and almost as much as Mozart in his day. His operas in the seria style were the gold standard of the genre. Now almost entirely forgotten." },
+  { name:"Giovanni B. Pergolesi",country:"Italy",       iso:"ITA", born:1710, active:[1730,1736], era:"Baroque",       genre:"Opera · Sacred",         lat:41.9, lon:12.5, bio:"He died at 26 and still changed music. La serva padrona launched the opera buffa tradition that fed into Mozart. His Stabat Mater, written in the last months of his life, became the most reprinted piece of the 18th century." },
+  { name:"Jean-Philippe Rameau", country:"France",      iso:"FRA", born:1683, active:[1722,1764], era:"Baroque",       genre:"Opera · Keyboard",       lat:48.9, lon:2.3,  bio:"The greatest French composer of the 18th century. His operas and opera-ballets — Les Indes galantes, Hippolyte et Aricie — are spectacular theatrical events. He also wrote the first systematic theory of harmony, which underpins Western music to this day." },
+  { name:"George Ph. Telemann",  country:"Germany",     iso:"DEU", born:1681, active:[1740,1767], era:"Classical",     genre:"Opera · Chamber",        lat:53.5, lon:10.0, bio:"Still active in the Classical era, Telemann outlived his Baroque contemporaries. His later works show a careful engagement with the new galant style, and his autobiography is one of the most vivid documents of 18th century musical life." },
+  // Classical
+  { name:"C.P.E. Bach",          country:"Germany",     iso:"DEU", born:1714, active:[1740,1788], era:"Classical",     genre:"Keyboard · Symphony",    lat:53.6, lon:10.0, bio:"The bridge between Baroque and Classical eras — the Bach the 18th century actually preferred over his father. His Empfindsamkeit style influenced Haydn and Mozart more than J.S. Bach did. His keyboard fantasies are wild and emotionally turbulent." },
+  { name:"Luigi Boccherini",     country:"Italy",       iso:"ITA", born:1743, active:[1760,1805], era:"Classical",     genre:"Chamber · Symphony",     lat:43.8, lon:11.2, bio:"The cello virtuoso who spent most of his career in Madrid. His Minuet from the String Quintet in E is one of the most recognisable pieces of the Classical era. He wrote over 500 works with an elegance that placed him alongside Haydn." },
+  { name:"Muzio Clementi",       country:"Italy",       iso:"ITA", born:1752, active:[1770,1832], era:"Classical",     genre:"Piano · Sonata",         lat:41.9, lon:12.5, bio:"Mozart's great rival as a pianist, and the composer who essentially invented the modern piano sonata. His Gradus ad Parnassum — a set of 100 piano studies — was used by every piano student in the 19th century. He also built pianos and ran a music publishing business." },
+  { name:"Jan Dussek",           country:"Czech Rep.",  iso:"CZE", born:1760, active:[1779,1812], era:"Classical",     genre:"Piano · Sonata",         lat:50.4, lon:15.0, bio:"A Bohemian pianist and composer who was arguably the first true Romantic composer — his harmonically adventurous piano sonatas predate Schubert and Beethoven's late works. His life was as dramatic as his music: he fled from creditors across Europe for decades." },
+  { name:"Antonio Salieri",      country:"Italy",       iso:"ITA", born:1750, active:[1770,1824], era:"Classical",     genre:"Opera",                  lat:45.5, lon:11.5, bio:"Mozart's nemesis in legend but not in life. One of the most powerful figures in Viennese musical life for decades — teacher of Beethoven, Schubert, and Liszt. His operas were highly regarded; the conspiracy theory about Mozart's death has no historical basis." },
+  { name:"Michael Haydn",        country:"Austria",     iso:"AUT", born:1737, active:[1762,1806], era:"Classical",     genre:"Sacred · Symphony",      lat:47.8, lon:13.0, bio:"Joseph Haydn's younger brother and a major figure in the Salzburg musical world. Mozart worked alongside him and borrowed ideas freely from him. His sacred music is of very high quality and deserves much more attention than it receives." },
+  // Romantic
+  { name:"Hector Berlioz",       country:"France",      iso:"FRA", born:1803, active:[1826,1869], era:"Romantic",      genre:"Symphonic · Orchestral", lat:48.9, lon:2.3,  bio:"The wild Romantic who invented the modern orchestra. The Symphonie Fantastique, written at 27, introduced programme music and an orchestra of unprecedented size. He fell in love with an Irish actress, she rejected him, and he turned it all into music." },
+  { name:"Felix Mendelssohn",    country:"Germany",     iso:"DEU", born:1809, active:[1820,1847], era:"Romantic",      genre:"Symphony · Oratorio",    lat:52.5, lon:13.4, bio:"A prodigy who wrote the Midsummer Night's Dream overture at 17 and never looked back. He rediscovered and performed Bach's St Matthew Passion after decades of neglect. The Violin Concerto and the Italian Symphony are among the most loved pieces of the Romantic era." },
+  { name:"Mikhail Glinka",       country:"Russia",      iso:"RUS", born:1804, active:[1836,1857], era:"Romantic",      genre:"Opera · Orchestral",     lat:55.8, lon:37.6, bio:"The father of Russian classical music. A Life for the Tsar was the first truly Russian opera, breaking from Italian and German models. Every Russian composer from Tchaikovsky to Stravinsky acknowledged their debt to him." },
+  { name:"Gaetano Donizetti",    country:"Italy",       iso:"ITA", born:1797, active:[1818,1845], era:"Romantic",      genre:"Opera",                  lat:45.7, lon:9.7,  bio:"One of the three great bel canto composers alongside Rossini and Bellini. Lucia di Lammermoor is his masterpiece — the mad scene is the most demanding soprano showpiece in the repertoire. He wrote over 70 operas." },
+  { name:"Vincenzo Bellini",     country:"Italy",       iso:"ITA", born:1801, active:[1825,1835], era:"Romantic",      genre:"Opera",                  lat:37.5, lon:15.1, bio:"The master of bel canto melody. Norma and La Sonnambula contain some of the most beautiful vocal writing in opera. He died at 33 but left a legacy that influenced Chopin, Wagner, and Verdi. His long-breathed melodies are the gold standard of Italian song." },
+  { name:"Gioachino Rossini",    country:"Italy",       iso:"ITA", born:1792, active:[1810,1829], era:"Romantic",      genre:"Opera",                  lat:43.8, lon:12.9, bio:"The most brilliant operatic talent of his day. The Barber of Seville, William Tell, La Cenerentola — he wrote 39 operas before the age of 37, then stopped and spent the rest of his life eating. His wit and melodic gift were unmatched." },
+  { name:"Mykola Lysenko",       country:"Ukraine",     iso:"UKR", born:1842, active:[1868,1912], era:"Romantic",      genre:"Opera · Piano · Song",   lat:50.5, lon:30.5, bio:"The father of Ukrainian classical music. He collected Ukrainian folk songs, composed operas on Ukrainian themes, and built a national musical identity under Russian imperial rule. His opera Taras Bulba was suppressed by the Tsarist authorities." },
+  { name:"Aleksandr Borodin",    country:"Russia",      iso:"RUS", born:1833, active:[1862,1887], era:"Romantic",      genre:"Opera · Orchestral",     lat:55.8, lon:37.6, bio:"A member of The Five — the group of Russian nationalist composers. In the Steppes of Central Asia and the unfinished opera Prince Igor (which gave the world Polovtsian Dances) are his masterpieces. He was also a professional chemist, composing only in his spare time." },
+  { name:"César Cui",            country:"Russia",      iso:"RUS", born:1835, active:[1857,1918], era:"Romantic",      genre:"Opera · Song",           lat:55.8, lon:37.6, bio:"The fifth member of the Mighty Handful — the Russian nationalist composers. More important as a critic and polemicist than as a composer, he wrote extensively about the need for a distinctly Russian classical music tradition." },
+  { name:"Mily Balakirev",       country:"Russia",      iso:"RUS", born:1837, active:[1855,1910], era:"Romantic",      genre:"Piano · Orchestral",     lat:55.8, lon:37.6, bio:"The leader and organiser of the Mighty Handful — the group of Russian nationalist composers that included Borodin, Rimsky-Korsakov, Mussorgsky, and Cui. His piano fantasia Islamey is one of the most technically demanding pieces in the repertoire." },
+  { name:"Charles-Valentin Alkan",country:"France",     iso:"FRA", born:1813, active:[1838,1888], era:"Romantic",      genre:"Piano",                  lat:48.9, lon:2.3,  bio:"The most extraordinary pianist of his era after Liszt — and, some argue, technically more demanding. His 12 Études in all the minor keys include a symphony and a concerto, both for solo piano. He lived as a recluse and was almost entirely unknown until his rediscovery in the 20th century." },
+  { name:"Stephen Heller",       country:"Hungary",     iso:"HUN", born:1813, active:[1838,1888], era:"Romantic",      genre:"Piano",                  lat:47.5, lon:19.0, bio:"A Romantic pianist-composer who moved to Paris and was admired by Schumann, Berlioz, and Chopin. His piano études and character pieces are beautifully crafted and deserve more attention than the teaching piano syllabuses have given them." },
+  { name:"Niels Gade",           country:"Denmark",     iso:"DNK", born:1817, active:[1840,1890], era:"Romantic",      genre:"Symphony · Choral",      lat:55.7, lon:12.6, bio:"Denmark's most important composer before Nielsen. He studied with Mendelssohn in Leipzig and returned to Copenhagen to found the Danish musical tradition. His eight symphonies established a distinctly Scandinavian voice in Romantic music." },
+
+  { name:"Hugo Wolf",            country:"Austria",     iso:"AUT", born:1860, active:[1877,1897], era:"Romantic",      genre:"Lied · Song Cycle",      lat:48.2, lon:16.4, bio:"The greatest composer of German Lieder after Schubert. His song collections — the Mörike Lieder, the Goethe Lieder, the Spanish and Italian Songbooks — are among the most psychologically intense vocal music ever written. He died insane at 42." },
+  { name:"Gabriel Fauré",        country:"France",      iso:"FRA", born:1845, active:[1865,1924], era:"Romantic",      genre:"Chamber · Song · Choral",lat:48.9, lon:2.3,  bio:"One of the most refined and original French composers. His Requiem is a vision of gentle, radiant peace rather than the usual terror. The Cello Sonatas and Nocturnes for piano are among the most beautiful chamber and keyboard works of the Romantic era. He went completely deaf in the last 20 years of his life." },
+  { name:"Vincent d'Indy",       country:"France",      iso:"FRA", born:1851, active:[1873,1931], era:"Romantic",      genre:"Orchestral · Chamber",   lat:48.9, lon:2.3,  bio:"The leading French composer of his generation after Fauré and Saint-Saëns. His Symphony on a French Mountain Air and the String Quartet No.2 are impressive achievements. He was also a hugely influential teacher at the Schola Cantorum in Paris." },
+  { name:"Ernest Chausson",      country:"France",      iso:"FRA", born:1855, active:[1878,1899], era:"Romantic",      genre:"Orchestral · Chamber",   lat:48.9, lon:2.3,  bio:"A student of Franck who died in a bicycle accident at 44. His Poème for violin and orchestra is one of the most beautiful pieces in the violin repertoire. The Symphony in B flat is a masterwork that deserves to be heard far more often." },
+  { name:"Emmanuel Chabrier",    country:"France",      iso:"FRA", born:1841, active:[1865,1894], era:"Romantic",      genre:"Opera · Orchestral",     lat:48.9, lon:2.3,  bio:"España is one of the most exhilarating orchestral showpieces ever written, dashed off after a trip to Spain. His opera Le Roi Malgré Lui and the piano pieces are witty and inventive. He was a passionate advocate for Wagner in France and owned paintings by Manet, Renoir, and Cézanne." },
+  { name:"Zdeněk Fibich",        country:"Czech Rep.",  iso:"CZE", born:1850, active:[1872,1900], era:"Romantic",      genre:"Opera · Orchestral",     lat:50.1, lon:14.4, bio:"The third of the great Czech nationalist composers alongside Smetana and Dvořák. His Šárka is one of the finest Czech operas. His melodramas — spoken text over orchestral music — were an entirely novel genre. His romantic piano piece Poème is still widely played." },
+  { name:"Franz Lehár",          country:"Hungary",     iso:"HUN", born:1870, active:[1895,1948], era:"Late Romantic", genre:"Operetta",               lat:47.5, lon:19.0, bio:"The king of Viennese operetta. The Merry Widow is the most performed operetta in history and one of the most popular stage works of any kind. Land of Smiles and Giuditta show a late-career move toward something more serious and beautiful." },
+  { name:"Leoncavallo",          country:"Italy",       iso:"ITA", born:1857, active:[1878,1919], era:"Romantic",      genre:"Opera",                  lat:45.5, lon:10.2, bio:"I Pagliacci — Clowns — is one of the most beloved one-act operas in the repertoire. The tenor aria Vesti la giubba is the most famous operatic sob in history. He is otherwise almost forgotten, which is typical of the fate of the one-opera composer." },
+  { name:"Pietro Mascagni",      country:"Italy",       iso:"ITA", born:1863, active:[1889,1945], era:"Romantic",      genre:"Opera · Verismo",        lat:43.5, lon:10.3, bio:"Cavalleria Rusticana — composed in one furious burst for a competition — is the founding work of the verismo movement in opera. The Intermezzo is one of the most played pieces in the classical repertoire. Like Leoncavallo, he struggled to repeat the success of his first masterpiece." },
+  { name:"Carl Reinecke",        country:"Germany",     iso:"DEU", born:1824, active:[1843,1910], era:"Romantic",      genre:"Piano · Chamber",        lat:53.6, lon:10.0, bio:"The link between Mendelssohn and the 20th century — he taught at the Leipzig Conservatory for nearly 40 years and his students included Grieg, Albéniz, and dozens of others. His Flute Sonata 'Undine' is one of the most beautiful pieces in the flute repertoire." },
+  // Late Romantic
+  { name:"Alexander Glazunov",   country:"Russia",      iso:"RUS", born:1865, active:[1882,1936], era:"Late Romantic", genre:"Symphony · Ballet",      lat:59.9, lon:30.3, bio:"A student of Rimsky-Korsakov and the last major figure of the Russian nationalist school. His eight symphonies maintain a conservative but brilliantly crafted style. He reconstructed the missing first act of Borodin's Prince Igor from memory." },
+  { name:"Alexander Scriabin",   country:"Russia",      iso:"RUS", born:1872, active:[1892,1915], era:"Late Romantic", genre:"Piano · Orchestral",     lat:55.8, lon:37.6, bio:"One of the most radical figures in early 20th century music. Starting from Chopin, he developed a completely personal harmonic language using 'mystic chords'. His late piano sonatas and the orchestral Poem of Ecstasy are unlike anything else ever written. He believed his final work would trigger the end of the world." },
+  { name:"Enrique Granados",     country:"Spain",       iso:"ESP", born:1867, active:[1890,1916], era:"Late Romantic", genre:"Piano · Opera",          lat:41.4, lon:2.2,  bio:"His piano suite Goyescas — inspired by Goya's paintings — is one of the most brilliantly atmospheric works in the piano repertoire. He died when his ship was torpedoed by a German submarine returning from the American premiere of his opera Goyescas." },
+  { name:"Federico Mompou",      country:"Spain",       iso:"ESP", born:1893, active:[1920,1987], era:"Modern",        genre:"Piano · Song",           lat:41.4, lon:2.2,  bio:"The most intimate and personal of the Spanish composers — a miniaturist of genius. His Música Callada (Silent Music) and Cançons i Danses are gentle, mysterious, and unlike anything else. He spent his entire life in Barcelona and Paris, avoiding the musical mainstream completely." },
+  { name:"Charles Ives",         country:"USA",         iso:"USA", born:1874, active:[1896,1927], era:"Modern",        genre:"Orchestral · Chamber",   lat:41.0, lon:-73.5, bio:"America's first great original composer — a visionary who invented polytonality and musical collage decades before the European avant-garde. He spent his days as an insurance executive and composed at night. His Three Places in New England were decades ahead of their time." },
+  { name:"George Enescu",        country:"Romania",     iso:"ROU", born:1881, active:[1897,1955], era:"Modern",        genre:"Opera · Chamber",        lat:44.4, lon:26.1, bio:"Romania's greatest composer — also one of the finest violinists of the 20th century. His opera Oedipe is a masterpiece virtually unknown outside Romania. The Romanian Rhapsodies fuse folk music with orchestral sophistication." },
+  { name:"George Gershwin",      country:"USA",         iso:"USA", born:1898, active:[1920,1937], era:"Modern",        genre:"Jazz-Classical",         lat:40.7, lon:-74.0, bio:"The composer who fused jazz and classical music into something entirely American. Rhapsody in Blue premiered in 1924 and changed what was possible in both genres. Porgy and Bess remains one of the greatest American operas. He died of a brain tumour at 38." },
+  { name:"Paul Hindemith",       country:"Germany",     iso:"DEU", born:1895, active:[1919,1963], era:"Modern",        genre:"Orchestra · Chamber",    lat:50.1, lon:8.7,  bio:"One of the leading figures of the German musical world between the wars. His opera Mathis der Maler and the symphony derived from it are his masterpieces. He developed a new theory of tonality to replace the rules that Schoenberg had abandoned, and emigrated when the Nazis branded his music 'degenerate'." },
+  { name:"Bohuslav Martinů",     country:"Czech Rep.",  iso:"CZE", born:1890, active:[1920,1959], era:"Modern",        genre:"Symphony · Opera",       lat:49.4, lon:17.7, bio:"One of the most prolific composers of the 20th century — six symphonies, 15 operas, countless chamber works. He spent most of his adult life in exile, first in Paris then in the USA. His music is full of Czech folk elements and a unique driving rhythmic energy." },
+  { name:"Sergei Prokofiev",     country:"Russia",      iso:"RUS", born:1891, active:[1910,1953], era:"Modern",        genre:"Symphony · Ballet · Opera",lat:55.8, lon:37.6, bio:"One of the great melodists of the 20th century. Romeo and Juliet, Peter and the Wolf, the Classical Symphony — music of enormous vitality and wit. His Piano Concerto No.3 is one of the most thrilling in the repertoire. He returned to the Soviet Union in 1936 and died the same day as Stalin." },
+  { name:"Carl Orff",            country:"Germany",     iso:"DEU", born:1895, active:[1935,1982], era:"Modern",        genre:"Dramatic Music",         lat:48.1, lon:11.6, bio:"Carmina Burana is the most performed choral piece of the 20th century. O Fortuna has appeared in more films, adverts, and sporting events than any other classical piece. A populist who understood exactly what he was doing." },
+  { name:"Francis Poulenc",      country:"France",      iso:"FRA", born:1899, active:[1917,1963], era:"Modern",        genre:"Chamber · Opera · Vocal", lat:48.9, lon:2.3, bio:"The wit and the mystic of 20th century French music — capable of songs of irreverent charm and religious music of profound beauty in the same afternoon. Dialogues of the Carmelites is one of the great 20th century operas. His song cycles with baritone Pierre Bernac are among the finest in French music." },
+  { name:"Arthur Honegger",      country:"Switzerland", iso:"CHE", born:1892, active:[1915,1955], era:"Modern",        genre:"Symphony · Dramatic",    lat:47.4, lon:8.5,  bio:"The member of Les Six who took things most seriously. His oratorio Le Roi David made his name. Pacific 231 — a portrait of a steam locomotive in music — was a sensation. His five symphonies, particularly the Third 'Liturgique', are among the most underrated of the 20th century." },
+  { name:"Darius Milhaud",       country:"France",      iso:"FRA", born:1892, active:[1912,1974], era:"Modern",        genre:"Opera · Orchestral",     lat:48.9, lon:2.3,  bio:"The most prolific member of Les Six. He spent time in Brazil and fused Brazilian rhythms with jazz and polytonality in a unique way. La Création du Monde — a ballet about the creation of the universe — was written before Gershwin's Rhapsody in Blue and predates it in fusing jazz and classical forms." },
+  { name:"Heitor Villa-Lobos",   country:"Brazil",      iso:"BRA", born:1887, active:[1915,1959], era:"Modern",        genre:"Guitar · Orchestra",     lat:-22.9, lon:-43.2, bio:"South America's greatest classical composer. He fused Brazilian folk and indigenous music with Baroque contrapuntal technique in his Bachianas Brasileiras series. His guitar Études are the foundation of the 20th century guitar repertoire." },
+  { name:"Carl Ruggles",         country:"USA",         iso:"USA", born:1876, active:[1910,1971], era:"Modern",        genre:"Orchestral · Chamber",   lat:41.0, lon:-73.5, bio:"The most radical American composer of his generation — a friend of Ives who took dissonance further than almost anyone. He spent 40 years on fewer than a dozen pieces, each one polished to an extraordinary density. Sun-Treader is one of the great monuments of 20th century American music." },
+  { name:"Wilhelm Stenhammar",   country:"Sweden",      iso:"SWE", born:1871, active:[1895,1927], era:"Late Romantic", genre:"Symphony · Chamber",     lat:59.3, lon:18.1, bio:"Sweden's finest composer of the early 20th century. His Second Symphony is considered the greatest Swedish symphony and one of the finest Scandinavian works of the era. His Piano Concerto No.2 is a real discovery." },
+  { name:"Franz Berwald",        country:"Sweden",      iso:"SWE", born:1796, active:[1817,1868], era:"Romantic",      genre:"Symphony · Chamber",     lat:59.3, lon:18.1, bio:"Sweden's greatest composer and one of the most original minds of the Romantic era — largely unrecognised in his lifetime. His Sinfonie Singulière is structurally innovative in ways that anticipate late Romantic developments." },
+  { name:"Johan Svendsen",       country:"Norway",      iso:"NOR", born:1840, active:[1865,1911], era:"Romantic",      genre:"Symphony · Orchestral",  lat:59.9, lon:10.7, bio:"Grieg's greatest contemporary in Norwegian music. His two symphonies and the Norwegian Rhapsodies are brilliantly crafted. His Romance for violin is one of the most played Norwegian pieces after Grieg. He spent much of his career as a conductor in Copenhagen." },
+  // Modern
+  { name:"Einojuhani Rautavaara",country:"Finland",     iso:"FIN", born:1928, active:[1952,2016], era:"Modern",        genre:"Symphony · Orchestral",  lat:60.2, lon:24.9, bio:"Finland's great post-Sibelius voice. Cantus Arcticus — the Concerto for Birds and Orchestra — uses recordings of real Finnish birdsong woven into lush orchestral textures. His Seventh Symphony 'Angel of Light' is one of the most popular orchestral works of the late 20th century." },
+  { name:"Witold Lutosławski",   country:"Poland",      iso:"POL", born:1913, active:[1938,1994], era:"Modern",        genre:"Orchestral · Chamber",   lat:52.2, lon:21.0, bio:"Poland's most internationally celebrated post-war composer. He developed aleatory counterpoint into a completely personal style. His Cello Concerto, written for Mstislav Rostropovich, and the Third Symphony are among the great works of the late 20th century." },
+  { name:"Pierre Boulez",        country:"France",      iso:"FRA", born:1925, active:[1950,2016], era:"Modern",        genre:"Orchestral · Conductor", lat:48.9, lon:2.3,  bio:"The most influential figure in post-war European classical music — as composer, conductor, and polemicist. Le Marteau sans maître is the defining work of musical serialism. He founded IRCAM in Paris, the world's foremost centre for musical research." },
+  { name:"K. Stockhausen",       country:"Germany",     iso:"DEU", born:1928, active:[1952,2007], era:"Modern",        genre:"Electronic · Avant-Garde",lat:50.9, lon:6.9, bio:"The most radical composer of the 20th century and the pioneer of electronic music. Gesang der Jünglinge mixed a boy's voice with electronic sounds and changed music forever in 1956. John Lennon put him on the Sgt. Pepper cover." },
+  { name:"Luigi Nono",           country:"Italy",       iso:"ITA", born:1924, active:[1950,1990], era:"Modern",        genre:"Avant-Garde · Electronic",lat:45.4, lon:12.3, bio:"The most politically committed composer of the post-war avant-garde. A committed communist who put protest and social justice at the centre of his music. Prometeo — performed in a specially built wooden ark in Venice — is one of the great achievements of 20th century music." },
+  { name:"Luciano Berio",        country:"Italy",       iso:"ITA", born:1925, active:[1950,2003], era:"Modern",        genre:"Orchestral · Electronic",lat:44.1, lon:9.8,  bio:"The most celebrated Italian composer of the post-war avant-garde. His Sinfonia — quoting Mahler, Beckett, and others simultaneously — is one of the great postmodern monuments. His Sequenzas for solo instruments are the definitive modern performance challenges for their respective instruments." },
+  { name:"Elliott Carter",       country:"USA",         iso:"USA", born:1908, active:[1936,2012], era:"Modern",        genre:"Chamber · Orchestral",   lat:40.7, lon:-74.0, bio:"The greatest American art music composer of the second half of the 20th century. He was still writing complex, demanding, beautiful music at the age of 103. His five string quartets are among the greatest of the century. He became more productive in his 80s and 90s than most composers in their prime." },
+  { name:"Aaron Copland",        country:"USA",         iso:"USA", born:1900, active:[1925,1972], era:"Modern",        genre:"Ballet · Orchestral",    lat:40.7, lon:-74.0, bio:"The composer who defined the sound of America. Appalachian Spring, Rodeo, and Billy the Kid created a new American musical language — open, optimistic, wide-horizoned. Fanfare for the Common Man has introduced more orchestral concerts than any other piece." },
+  { name:"Harrison Birtwistle",  country:"England",     iso:"GBR", born:1934, active:[1958,2022], era:"Modern",        genre:"Opera · Orchestral",     lat:51.5, lon:-0.1, bio:"The most uncompromising figure in late 20th century British music. Gawain and The Mask of Orpheus are landmark operas. His orchestral work Panic caused a scandal when performed at the Last Night of the Proms in 1995. He was knighted but remained determinedly outside the musical mainstream." },
+  { name:"Peter Maxwell Davies", country:"England",     iso:"GBR", born:1934, active:[1957,2016], era:"Modern",        genre:"Opera · Orchestral",     lat:51.5, lon:-0.1, bio:"One of the leading British composers of his generation. He moved to Orkney in Scotland and the landscape there shaped his music profoundly. Eight Symphonies, operas, and a remarkable series of chamber works called the Strathclyde Concertos. He was Master of the Queen's Music." },
+  { name:"Henri Dutilleux",      country:"France",      iso:"FRA", born:1916, active:[1947,2013], era:"Modern",        genre:"Symphony · Chamber",     lat:48.9, lon:2.3,  bio:"The great independent of 20th century French music — he rejected both serialism and minimalism and found his own highly refined path. His two symphonies and the cello concerto Tout un Monde Lointain are among the most beautifully crafted works of the 20th century. He polished every piece for decades before releasing it." },
+  { name:"Giya Kancheli",        country:"Georgia",     iso:"GEO", born:1935, active:[1962,2019], era:"Modern",        genre:"Symphony · Chamber",     lat:41.7, lon:44.8, bio:"The greatest Georgian composer and one of the most powerful voices in late 20th century music. His seven symphonies alternate between extreme silence and devastating climaxes. Liturgy for viola and orchestra is one of the most emotionally overwhelming works of the era." },
+  // Minimalist / Contemporary
+  { name:"Steve Reich",          country:"USA",         iso:"USA", born:1936, active:[1965,2025], era:"Minimalist",    genre:"Minimalist · Phase",     lat:40.7, lon:-74.0, bio:"The inventor of phase music and one of the founding minimalists. Music for 18 Musicians is the most influential work of the minimalist movement. Different Trains uses recorded speech fragments in a way that was entirely new. His techniques shaped electronic music, hip-hop, and contemporary classical music alike." },
+  { name:"John Adams",           country:"USA",         iso:"USA", born:1947, active:[1978,2025], era:"Minimalist",    genre:"Opera · Orchestral",     lat:37.8, lon:-122.4, bio:"The most performed living American classical composer. Nixon in China and Doctor Atomic are landmarks of 20th century opera. Shaker Loops and Harmonielehre show the breadth of his orchestral language. He took minimalism and made it dramatically and emotionally powerful." },
+  { name:"Philip Glass",         country:"USA",         iso:"USA", born:1937, active:[1968,2025], era:"Minimalist",    genre:"Opera · Film · Orchestra",lat:40.7, lon:-74.0, bio:"The most famous minimalist composer. Einstein on the Beach changed what opera could be. Glassworks brought minimalism to a mainstream audience. The Photographer, Akhnaten, and scores for The Hours and Kundun show his range. His hypnotic repetitive patterns have influenced popular music, film, and contemporary classical music worldwide." },
+  { name:"Erkki-Sven Tüür",      country:"Estonia",     iso:"EST", born:1959, active:[1985,2025], era:"Minimalist",    genre:"Symphony · Orchestral",  lat:59.4, lon:24.7, bio:"Estonia's other major composer alongside Pärt. His music is more turbulent and complex — he fuses symphonic tradition with progressive rock-derived energy in a completely personal way. His eight symphonies are among the most exciting in recent European music." },
+  { name:"Veljo Tormis",         country:"Estonia",     iso:"EST", born:1930, active:[1960,2017], era:"Minimalist",    genre:"Choral · Folk",          lat:59.4, lon:24.7, bio:"Estonia's greatest choral composer. He spent decades collecting and harmonising Estonian runic songs, building a vast archive of choral music rooted in Estonia's ancient oral tradition. His Forgotten Peoples cycle brought Estonian folk music to the international choral world." },
+  { name:"Pärt Uusberg",         country:"Estonia",     iso:"EST", born:1986, active:[2008,2025], era:"Contemporary",  genre:"Choral · Chamber",       lat:59.4, lon:24.7, bio:"The leading voice of the younger Estonian generation. His choral music has the same luminous simplicity as Pärt's tintinnabuli style, but with a warmth and directness all his own. His works are being performed by choirs worldwide." },
+  { name:"Jóhann Jóhannsson",    country:"Iceland",     iso:"ISL", born:1969, active:[2002,2018], era:"Contemporary",  genre:"Film · Neo-Classical",   lat:64.1, lon:-21.9, bio:"The Icelandic composer who scored Arrival, Sicario, and The Theory of Everything before his sudden death in 2018. His orchestral language — melancholy, beautiful, and cinematically precise — made him the defining film composer of his generation." },
+  { name:"Caroline Shaw",        country:"England",     iso:"GBR", born:1982, active:[2012,2025], era:"Contemporary",  genre:"Chamber · Choral · Crossover",lat:51.5, lon:-0.1, bio:"The youngest ever winner of the Pulitzer Prize for Music, at 30. Partita for 8 Voices won in 2013. She has since collaborated with Kanye West, Rosalía, and Renée Fleming — moving between classical, pop, and avant-garde with total fluency." },
+  { name:"Magnus Lindberg",      country:"Finland",     iso:"FIN", born:1958, active:[1990,2025], era:"Contemporary",  genre:"Orchestral · Concerto",  lat:60.2, lon:24.9, bio:"One of the most technically accomplished orchestral composers alive. His Piano Concerto No.2 and the orchestral work Kraft are extraordinary feats of invention. He was composer-in-residence with both the New York Philharmonic and the Philharmonia Orchestra in London." },
+  { name:"Georg Friedrich Haas", country:"Austria",     iso:"AUT", born:1953, active:[1980,2025], era:"Contemporary",  genre:"Microtonal · Chamber",   lat:48.2, lon:16.4, bio:"The leading figure in contemporary microtonal music — he writes music using intervals smaller than the semitone, creating sound worlds of unearthly beauty. His in vain for large ensemble is one of the great works of 21st century music." },
+  { name:"Beat Furrer",          country:"Switzerland", iso:"CHE", born:1954, active:[1985,2025], era:"Contemporary",  genre:"Opera · Chamber",        lat:47.4, lon:8.5,  bio:"One of the most significant Austrian-Swiss composers of his generation. His operas Invocation and FAMA have established him as a major figure in European new music. His chamber works have a luminous, fragile beauty." },
+  { name:"Tristan Murail",       country:"France",      iso:"FRA", born:1947, active:[1975,2025], era:"Contemporary",  genre:"Spectral · Orchestral",  lat:48.9, lon:2.3,  bio:"One of the founders of spectral music — a compositional approach based on the acoustic properties of sound itself, analysing and composing with the harmonic overtone series. Gondwana and Désintégrations are the defining works of the spectral school." },
+  { name:"Esa-Pekka Salonen",    country:"Finland",     iso:"FIN", born:1958, active:[1982,2025], era:"Contemporary",  genre:"Orchestral · Concerto",  lat:60.2, lon:24.9, bio:"Better known as one of the great conductors of his generation — he transformed the LA Philharmonic during his 17 years there — but also a significant composer. His Violin Concerto and the orchestral work LA Variations are impressive achievements." },
+  { name:"Unsuk Chin",           country:"South Korea", iso:"KOR", born:1961, active:[1988,2025], era:"Contemporary",  genre:"Opera · Orchestral",     lat:37.6, lon:127.0, bio:"The most celebrated Korean classical composer. A student of Ligeti in Hamburg, she has developed a complex, glittering orchestral language all her own. Alice in Wonderland — her opera — premiered at the Bavarian State Opera. Her violin concerto won the Grawemeyer Award." },
+  { name:"Tansy Davies",         country:"England",     iso:"GBR", born:1973, active:[2000,2025], era:"Contemporary",  genre:"Opera · Orchestral",     lat:51.5, lon:-0.1, bio:"One of the most striking British composers of her generation. Her opera Between Worlds, about the September 11 attacks, premiered at the Barbican in London. Neon combines rock energy with complex orchestral writing in a way that is completely her own." },
+  { name:"Mark-Anthony Turnage", country:"England",     iso:"GBR", born:1960, active:[1988,2025], era:"Contemporary",  genre:"Opera · Orchestral",     lat:51.5, lon:-0.1, bio:"The leading British composer who fuses jazz and classical music. Anna Nicole — his opera about Anna Nicole Smith — was a Covent Garden sensation. Greek, his first opera based on Steven Berkoff's play, put him on the map. His saxophone concerto and Blood on the Floor are major works." },
+  { name:"Rolf Wallin",          country:"Norway",      iso:"NOR", born:1957, active:[1985,2025], era:"Contemporary",  genre:"Orchestral · Chamber",   lat:59.9, lon:10.7, bio:"Norway's most prominent composer of contemporary classical music. His orchestral work Stonewave and the opera Swantje und Friedrich are major achievements. He is fascinated by natural systems and uses mathematical structures drawn from nature in his compositional process." },
+];
+
+// ── ISO NUMERIC ────────────────────────────────────────────
+const isoToNum = {
+  ITA:380, DEU:276, AUT:40,  FRA:250, RUS:643, POL:616,
+  CZE:203, NOR:578, FIN:246, HUN:348, ESP:724, GBR:826,
+  NLD:528, BEL:56,  ROU:642, DNK:208, PRT:620, GRC:300,
+  UKR:804, SWE:752, EST:233, ISL:352, CHE:756, USA:840,
+  BRA:76,  GEO:268, KOR:410,
+};
+
+const europeanNums = new Set([
+  8,20,31,40,51,56,70,100,112,191,203,208,233,246,250,276,
+  300,348,352,372,380,428,440,442,528,578,616,620,642,643,
+  688,703,705,724,752,756,792,804,826,891,268,40,756
+]);
+
+// ── SCRUBBER ───────────────────────────────────────────────
+let currentYear=START_YEAR, isDragging=false;
+
+const eraMarkersEl=document.getElementById('era-markers');
+ERAS.forEach(e=>{ const el=document.createElement('div'); el.className='era-marker'; el.textContent=e.name; eraMarkersEl.appendChild(el); });
+
+const trackErasEl=document.getElementById('track-eras');
+ERAS.forEach(e=>{ const s=document.createElement('div'); s.className='era-seg'; s.style.width=((e.end-e.start+1)/SPAN*100)+'%'; s.style.background=e.color; trackErasEl.appendChild(s); });
+
+const handle=document.getElementById('scrubber-handle');
+const fill=document.getElementById('track-fill');
+const tooltip=document.getElementById('year-tooltip');
+const track=document.getElementById('scrubber-track');
+
+function yearToFrac(y){return(y-START_YEAR)/SPAN;}
+function fracToYear(f){return Math.round(START_YEAR+f*SPAN);}
+function setHandle(frac){const p=Math.max(0,Math.min(100,frac*100));handle.style.left=p+'%';fill.style.width=p+'%';tooltip.textContent=fracToYear(frac);}
+
+function onScrub(cx){const r=track.getBoundingClientRect();const f=Math.max(0,Math.min(1,(cx-r.left)/r.width));const y=fracToYear(f);if(y!==currentYear){currentYear=y;setHandle(f);updateMap(y);}}
+
+handle.addEventListener('mousedown',e=>{isDragging=true;handle.classList.add('dragging');e.preventDefault();});
+track.addEventListener('mousedown', e=>{isDragging=true;handle.classList.add('dragging');onScrub(e.clientX);});
+window.addEventListener('mousemove',e=>{if(isDragging)onScrub(e.clientX);});
+window.addEventListener('mouseup',  ()=>{isDragging=false;handle.classList.remove('dragging');});
+handle.addEventListener('touchstart',e=>{isDragging=true;handle.classList.add('dragging');e.preventDefault();},{passive:false});
+window.addEventListener('touchmove', e=>{if(isDragging)onScrub(e.touches[0].clientX);},{passive:true});
+window.addEventListener('touchend',  ()=>{isDragging=false;handle.classList.remove('dragging');});
+setHandle(0);
+
+// ── D3 MAP ─────────────────────────────────────────────────
+const svg=d3.select('#map-svg');
+let countryLayer=null,pinLayer=null,projection=null,pathGen=null,worldData=null;
+
+function setupMap(){
+  const wrap=document.getElementById('map-wrap');
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  svg.attr('width',W).attr('height',H);
+  svg.selectAll('*').remove();
+  projection=d3.geoConicConformal().center([20,52]).parallels([40,65]).scale(W*1.05).translate([W*0.38,H*0.5]);
+  pathGen=d3.geoPath().projection(projection);
+  svg.append('rect').attr('width',W).attr('height',H).attr('fill','#141c22');
+  const g=d3.geoGraticule().step([10,10]);
+  svg.append('path').datum(g()).attr('d',pathGen).attr('fill','none').attr('stroke','rgba(255,255,255,0.025)').attr('stroke-width',0.5);
+  countryLayer=svg.append('g').attr('class','countries');
+  pinLayer=svg.append('g').attr('class','pins');
+}
+
+function renderCountries(world){
+  const features=topojson.feature(world,world.objects.countries).features;
+  const borders=topojson.mesh(world,world.objects.countries,(a,b)=>a!==b);
+  countryLayer.selectAll('path.country').data(features).join('path')
+    .attr('class',d=>europeanNums.has(d.id)?'country':'country out-of-region')
+    .attr('d',pathGen).attr('data-id',d=>d.id)
+    .on('click',(event,d)=>{
+      const visM=getMajorVisible(currentYear);
+      const matchM=visM.find(c=>isoToNum[c.iso]===d.id);
+      if(matchM){openModal(matchM);return;}
+      const visS=getSecondaryVisible(currentYear);
+      const matchS=visS.find(c=>isoToNum[c.iso]===d.id);
+      if(matchS)openMinorModal(matchS);
+    });
+  countryLayer.append('path').datum(borders).attr('d',pathGen).attr('fill','none').attr('stroke','rgba(6,12,8,0.75)').attr('stroke-width',0.55);
+}
+
+function getMajorVisible(year){
+  const seen=new Set();
+  return major.filter(c=>{
+    if(year<c.active[0]||year>c.active[1])return false;
+    if(seen.has(c.iso))return false;
+    seen.add(c.iso);return true;
+  });
+}
+
+function getSecondaryVisible(year){
+  const majorIsos=new Set(getMajorVisible(year).map(c=>c.iso));
+  return secondary.filter(c=>{
+    if(year<c.active[0]||year>c.active[1])return false;
+    if(majorIsos.has(c.iso))return false; // don't double-pin same country
+    return true;
+  });
+}
+
+function updateMap(year){
+  const era=getEra(year);
+  document.getElementById('era-badge').textContent=era.name;
+
+  const visM=getMajorVisible(year);
+  const visS=getSecondaryVisible(year);
+  const activeIds=new Set([...visM,...visS].map(c=>isoToNum[c.iso]).filter(Boolean));
+
+  if(countryLayer){
+    countryLayer.selectAll('path.country')
+      .classed('has-composer',d=>activeIds.has(d.id))
+      .classed('active-composer',false);
+  }
+
+  if(pinLayer){
+    pinLayer.selectAll('*').remove();
+
+    // Draw secondary pins first (underneath)
+    visS.forEach(c=>{
+      const coords=projection([c.lon,c.lat]);
+      if(!coords)return;
+      const[px,py]=coords;
+      const g2=pinLayer.append('g').attr('class','pin-minor').attr('transform',`translate(${px},${py})`).on('click',()=>openMinorModal(c));
+      g2.append('circle').attr('class','pin-dot-minor').attr('r',3.5);
+      g2.append('text').attr('class','pin-label-minor').attr('x',7).attr('y',4).text(c.name);
+    });
+
+    // Draw major pins on top
+    visM.forEach(c=>{
+      const coords=projection([c.lon,c.lat]);
+      if(!coords)return;
+      const[px,py]=coords;
+      const g2=pinLayer.append('g').attr('class','pin-major').attr('transform',`translate(${px},${py})`).on('click',()=>openModal(c));
+      g2.append('circle').attr('class','pin-pulse').attr('r',5);
+      g2.append('circle').attr('class','pin-dot-major').attr('r',5.5);
+      g2.append('text').attr('class','pin-label-major').attr('x',9).attr('y',4).text(c.name);
+    });
+  }
+
+  const total=visM.length+visS.length;
+  if(total>0){
+    const latest=visM.length>0?visM.reduce((a,b)=>b.born>a.born?b:a):visS.reduce((a,b)=>b.born>a.born?b:a);
+    document.getElementById('c-name').textContent=latest.name;
+    document.getElementById('c-meta').textContent=latest.country+' · '+latest.era;
+    document.getElementById('composer-card').classList.add('visible');
+  } else {
+    document.getElementById('composer-card').classList.remove('visible');
+  }
+}
+
+// ── MODALS ─────────────────────────────────────────────────
+function spotifyEmbed(q){ return 'https://open.spotify.com/embed/search/'+encodeURIComponent(q)+'?utm_source=generator&theme=0'; }
+function spotifyURL(q){ return 'https://open.spotify.com/search/'+encodeURIComponent(q); }
+function ytURL(q){ return 'https://www.youtube.com/results?search_query='+encodeURIComponent(q); }
+
+function openModal(c){
+  document.getElementById('m-year').textContent=c.born;
+  document.getElementById('m-era').textContent=c.era;
+  document.getElementById('m-name').textContent=c.name;
+  document.getElementById('m-country').textContent=c.country;
+  document.getElementById('m-genre').textContent=c.genre;
+  document.getElementById('m-bio').textContent=c.bio;
+  document.getElementById('spotify-frame').src=spotifyEmbed(c.search);
+  document.getElementById('spotify-btn').href=spotifyURL(c.search);
+  document.getElementById('yt-btn').href=ytURL(c.search);
+  document.getElementById('modal-backdrop').classList.add('open');
+  if(countryLayer)countryLayer.selectAll('path.country').classed('active-composer',d=>d.id===isoToNum[c.iso]);
+}
+
+function closeModal(){
+  document.getElementById('modal-backdrop').classList.remove('open');
+  document.getElementById('spotify-frame').src='';
+  if(countryLayer)countryLayer.selectAll('path.country').classed('active-composer',false);
+}
+
+function openMinorModal(c){
+  const q = c.name+' '+c.genre.split('·')[0].trim();
+  document.getElementById('mm-year').textContent=c.born;
+  document.getElementById('mm-era').textContent=c.era;
+  document.getElementById('mm-name').textContent=c.name;
+  document.getElementById('mm-country').textContent=c.country;
+  document.getElementById('mm-genre').textContent=c.genre;
+  document.getElementById('mm-bio').textContent=c.bio;
+  document.getElementById('mm-spotify-frame').src=spotifyEmbed(q);
+  document.getElementById('mm-spotify').href=spotifyURL(q);
+  document.getElementById('mm-yt').href=ytURL(q);
+  document.getElementById('minor-modal-backdrop').classList.add('open');
+  if(countryLayer)countryLayer.selectAll('path.country').classed('active-composer',d=>d.id===isoToNum[c.iso]);
+}
+
+function closeMinorModal(){
+  document.getElementById('minor-modal-backdrop').classList.remove('open');
+  document.getElementById('mm-spotify-frame').src='';
+  if(countryLayer)countryLayer.selectAll('path.country').classed('active-composer',false);
+}
+
+document.getElementById('modal-backdrop').addEventListener('click',function(e){if(e.target===this)closeModal();});
+document.getElementById('minor-modal-backdrop').addEventListener('click',function(e){if(e.target===this)closeMinorModal();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeMinorModal();}});
+
+// ── INIT ──────────────────────────────────────────────────
+setupMap();
+fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+  .then(r=>r.json())
+  .then(world=>{
+    worldData=world;
+    document.getElementById('loading').style.display='none';
+    renderCountries(world);
+    updateMap(START_YEAR);
+  })
+  .catch(()=>{document.getElementById('loading').textContent='Map requires an internet connection to load.';});
+
+window.addEventListener('resize',()=>{setupMap();if(worldData){renderCountries(worldData);updateMap(currentYear);}});
+</script>
+</body>
+</html>
